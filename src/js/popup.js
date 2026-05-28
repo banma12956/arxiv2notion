@@ -6,7 +6,6 @@ import UIKit from 'uikit';
 import Icons from 'uikit/dist/js/uikit-icons';
 import Mustache from 'mustache';
 import NotionClient from './notion.js';
-import thenChrome from 'then-chrome';
 import urlParser from './parsers.js';
 
 UIKit.use(Icons);
@@ -54,14 +53,16 @@ class UI {
   setupSaveButton() {
     document.getElementById('js-save').addEventListener('click', async () => {
       this.showProgressBar();
-      const data = await this.client.createPage(this.data);
-      if (data.status && data.status == 400) {
-        this.renderMessage('danger', `[${data.code}] ${data.message}`);
-        return;
-      } else {
-        thenChrome.tabs.create({
-          url: `https://notion.so/${data.id.replaceAll('-', '')}`,
-        });
+      try {
+        const data = await this.client.createPage(this.data);
+        if (data.status && data.status == 400) {
+          this.renderMessage('danger', `[${data.code}] ${data.message}`);
+          return;
+        } else {
+          this.renderMessage('success', 'Saved to Notion.');
+        }
+      } catch (err) {
+        this.renderMessage('danger', err.message);
       }
     });
   }
@@ -105,9 +106,14 @@ class UI {
   }
   async getPaperInfo(url) {
     this.showProgressBar();
-    const data = await urlParser.parse(url);
-    this.setFormContents(data.title, data.abst, data.comment, data.authors);
-    return data;
+    try {
+      const data = await urlParser.parse(url);
+      this.setFormContents(data.title, data.abst, data.comment, data.authors);
+      return data;
+    } catch (err) {
+      this.renderMessage('danger', err.message);
+      throw err;
+    }
   }
   setFormContents(paperTitle, abst, comment, authors) {
     document.getElementById('js-title').value = paperTitle;

@@ -1,0 +1,12 @@
+{
+  "notion_token": "PASTE_NOTION_INSTALLATION_ACCESS_TOKEN_HERE",
+  "source_db": "fc47f8206cf142b590985bee387f792f",
+  "target_db": "PASTE_TARGET_ARXIV2NOTION_DATABASE_ID_OR_URL_HERE",
+  "dry_run": true,
+  "source_title": "Title",
+  "source_authors": "Author",
+  "source_year": "Year",
+  "source_notes": "Notes",
+  "source_my_notes": "My notes",
+  "sleep": 0.38
+}

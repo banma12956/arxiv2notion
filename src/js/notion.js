@@ -1,6 +1,40 @@
 // MIT License
 // Copyright (c) 2021 denkiwakame <denkivvakame@gmail.com>
 
+export function makeRichText(content) {
+  if (!content) {
+    return { rich_text: [] };
+  }
+  return {
+    rich_text: [
+      {
+        type: 'text',
+        text: {
+          content: String(content),
+        },
+      },
+    ],
+  };
+}
+
+export function makeAuthorsProperty(authors, authorsPropertyType) {
+  const safeAuthors = Array.isArray(authors) ? authors : [];
+
+  if (authorsPropertyType === 'rich_text') {
+    return makeRichText(safeAuthors.join(', '));
+  }
+
+  if (authorsPropertyType === 'multi_select') {
+    return {
+      multi_select: safeAuthors.map((author) => ({ name: author })),
+    };
+  }
+
+  throw new Error(
+    'Authors must be a Text property (rich_text). Multi-Select is still supported for legacy databases.'
+  );
+}
+
 export default class Notion {
   constructor() {
     this.token = null;
@@ -92,6 +126,31 @@ export default class Notion {
     }
   }
 
+  async retrieveDatabaseInfo(databaseId) {
+    try {
+      const url = this.apiBase + `databases/${databaseId}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        mode: 'cors',
+        headers: this.torkenizedHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to retrieve Notion database.');
+      }
+      return data;
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  }
+
+  async retrieveAuthorsPropertyType(databaseId) {
+    const database = await this.retrieveDatabaseInfo(databaseId);
+    const authorsPropertyType = database.properties?.Authors?.type;
+    return authorsPropertyType;
+  }
+
   async createPage(_data) {
     const data = await _data;
     const databaseId = document.getElementById('js-select-database').value;
@@ -103,17 +162,14 @@ export default class Notion {
     );
     if (duplicateEntries.length != 0) return duplicateEntries[0];
 
+    const database = await this.retrieveDatabaseInfo(databaseId);
     const title = data.title;
-    const abst = data.abst;
     const paperUrl = data.url;
-    const authorsFormatted = data.authors.join(', ');
+    const authors = Array.isArray(data.authors) ? data.authors : [];
+    const authorsPropertyType = database.properties?.Authors?.type;
     const published = data.published;
     const publisher = data.publisher;
     const comment = data.comment;
-    const authors = authorsFormatted.split(', ');
-    const authorsMultiSelect = authors.map((author) => {
-      return { name: author };
-    });
 
     try {
       const url = this.apiBase + 'pages';
@@ -137,42 +193,20 @@ export default class Notion {
           type: 'url',
           url: paperUrl,
         },
-        Abstract: {
-          id: 'abstract',
-          type: 'rich_text',
-          rich_text: [
-            {
-              type: 'text',
-              text: { content: abst, link: null },
-              annotations: {
-                bold: false,
-                italic: true,
-                strikethrough: false,
-                underline: false,
-                code: false,
-                color: 'default',
-              },
-              plain_text: abst,
-              href: null,
-            },
-          ],
-        },
-        Authors: {
-          id: 'authors',
-          type: 'multi_select',
-          multi_select: authorsMultiSelect,
-        },
+        Authors: makeAuthorsProperty(authors, authorsPropertyType),
         Published: {
           id: 'published',
           type: 'date',
           date: { start: published, end: null },
         },
-        Comments: {
+      };
+      if (database.properties?.Comments) {
+        properties.Comments = {
           id: 'comment',
           type: 'url',
           url: comment,
-        },
-      };
+        };
+      }
 
       const body = {
         parent: parent,
