@@ -18,9 +18,35 @@ class URLParser {
   }
 }
 
+const DEFAULT_FETCH_TIMEOUT_MS = 8000;
+
+const fetchWithTimeout = async (fetchUrl, options = {}) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    DEFAULT_FETCH_TIMEOUT_MS
+  );
+  try {
+    return await fetch(fetchUrl, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const getMeta = (xml, name) =>
+  xml.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
+
+const requireMeta = (xml, name, label) => {
+  const value = getMeta(xml, name);
+  if (!value) throw new Error(`Missing ${label || name} metadata.`);
+  return value;
+};
+
 const arXivParser = async (url) => {
   const ARXIV_API = 'https://export.arxiv.org/api/query';
-  const API_TIMEOUT_MS = 8000;
   // ref: https://info.arxiv.org/help/arxiv_identifier.html
   // e.g. (new id format: 2404.16782) | (old id format: hep-th/0702063)
   const parseArXivId = (str) => {
@@ -54,7 +80,7 @@ const arXivParser = async (url) => {
   };
 
   const parseFromArXivHtml = async (paperId) => {
-    const res = await fetch(`https://arxiv.org/abs/${paperId}`, {
+    const res = await fetchWithTimeout(`https://arxiv.org/abs/${paperId}`, {
       method: 'GET',
       mode: 'cors',
     });
@@ -64,18 +90,19 @@ const arXivParser = async (url) => {
 
     const html = await res.text();
     const xml = new window.DOMParser().parseFromString(html, 'text/html');
-    const getMeta = (name) =>
-      xml.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '';
-    const paperTitle = getMeta('citation_title');
-    const authors = Array.from(xml.querySelectorAll('meta[name="citation_author"]'))
+    const paperTitle = getMeta(xml, 'citation_title');
+    const authors = Array.from(
+      xml.querySelectorAll('meta[name="citation_author"]')
+    )
       .map((author) => formatArXivAuthor(author.getAttribute('content') || ''))
       .filter(Boolean);
-    const abst = getMeta('citation_abstract').replace(/\n/g, ' ').trim();
+    const abst = getMeta(xml, 'citation_abstract').replace(/\n/g, ' ').trim();
     const published = parseArXivDate(
-      getMeta('citation_online_date') || getMeta('citation_date')
+      getMeta(xml, 'citation_online_date') || getMeta(xml, 'citation_date')
     );
 
-    if (!paperTitle) throw new Error(`No arXiv metadata found for id: ${paperId}`);
+    if (!paperTitle)
+      throw new Error(`No arXiv metadata found for id: ${paperId}`);
 
     return {
       id: paperId,
@@ -89,26 +116,16 @@ const arXivParser = async (url) => {
     };
   };
 
-  const fetchWithTimeout = async (fetchUrl, options = {}) => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-    try {
-      return await fetch(fetchUrl, {
-        ...options,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
-    }
-  };
-
   const paperId = parseArXivId(url);
   if (!paperId) throw new Error(`Could not parse arXiv id from URL: ${url}`);
 
   try {
     return await parseFromArXivHtml(paperId);
   } catch (err) {
-    console.warn('arxiv.org HTML parse failed; falling back to arXiv API.', err);
+    console.warn(
+      'arxiv.org HTML parse failed; falling back to arXiv API.',
+      err
+    );
   }
 
   let res;
@@ -121,29 +138,41 @@ const arXivParser = async (url) => {
       },
     });
   } catch (err) {
-    console.warn('arXiv API request failed; falling back to arxiv.org HTML.', err);
-    return parseFromArXivHtml(paperId);
+    console.warn(
+      'arXiv API request failed; falling back to arxiv.org HTML.',
+      err
+    );
+    throw new Error(
+      `Failed to fetch arXiv metadata for ${paperId}: ${err.message}`
+    );
   }
   if (!res.ok) {
     console.warn('arXiv API request failed with status:', res.status);
-    return parseFromArXivHtml(paperId);
+    throw new Error(
+      `Failed to fetch arXiv metadata for ${paperId}: status ${res.status}`
+    );
   }
-  const data = await res.text(); // TODO: error handling
-  console.log(res.status);
+  const data = await res.text();
   const xmlData = new window.DOMParser().parseFromString(data, 'text/xml');
-  console.log(xmlData);
 
   const entry = xmlData.querySelector('entry');
-  if (!entry) return parseFromArXivHtml(paperId);
+  if (!entry) throw new Error(`No arXiv metadata found for id: ${paperId}`);
 
   const id = parseArXivId(entry.querySelector('id')?.textContent);
-  const paperTitle = entry.querySelector('title').textContent;
-  const abst = entry.querySelector('summary').textContent.replace(/\n/g, ' ').trim();
+  const paperTitle = entry.querySelector('title')?.textContent?.trim();
+  const abst = entry
+    .querySelector('summary')
+    ?.textContent?.replace(/\n/g, ' ')
+    .trim();
   const authors = Array.from(entry.querySelectorAll('author')).map((author) => {
     return author.textContent.trim();
   });
-  const published = entry.querySelector('published').textContent;
+  const published = parseArXivDate(
+    entry.querySelector('published')?.textContent
+  );
   const comment = entry.querySelector('comment')?.textContent ?? 'none';
+
+  if (!paperTitle) throw new Error(`No arXiv title found for id: ${paperId}`);
 
   return {
     id: id,
@@ -159,7 +188,10 @@ const arXivParser = async (url) => {
 
 const openReviewParser = async (url) => {
   const id = new URLSearchParams(new URL(url).search).get('id');
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) {
+    throw new Error(`OpenReview request failed with status: ${res.status}`);
+  }
   const html = await res.text();
   const parser = new DOMParser();
   const xml = parser.parseFromString(html, 'text/html');
@@ -170,21 +202,13 @@ const openReviewParser = async (url) => {
   );
   const authors = authorsArray.length ? authorsArray : ['Anonymous'];
 
-  const paperTitle = xml
-    .querySelector('meta[name="citation_title"]')
-    .getAttribute('content');
+  const paperTitle = requireMeta(xml, 'citation_title', 'OpenReview title');
 
-  const abst = xml
-    .querySelector('meta[name="citation_abstract"]')
-    .getAttribute('content')
-    .replace(/\n/g, ' ')
-    .trim();
+  const abst = getMeta(xml, 'citation_abstract').replace(/\n/g, ' ').trim();
 
-  const date = xml
-    .querySelector('meta[name="citation_online_date"]')
-    .getAttribute('content');
+  const date = getMeta(xml, 'citation_online_date');
   // -> ISO 8601 date string
-  const published = new Date(date).toISOString().split('T')[0];
+  const published = date ? new Date(date).toISOString().split('T')[0] : '';
   const comment = 'none';
 
   return {
@@ -200,35 +224,31 @@ const openReviewParser = async (url) => {
 };
 
 const aclAnthologyParser = async (url) => {
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) {
+    throw new Error(`ACL Anthology request failed with status: ${res.status}`);
+  }
   const html = await res.text();
   const parser = new DOMParser();
   const xml = parser.parseFromString(html, 'text/html');
 
-  const id = xml
-    .querySelector('meta[name="citation_doi"]')
-    .getAttribute('content');
+  const id = getMeta(xml, 'citation_doi') || url;
   const authors = Array.from(
     xml.querySelectorAll('meta[name="citation_author"]'),
     (author) => author.getAttribute('content')
   );
 
-  const paperTitle = xml
-    .querySelector('meta[name="citation_title"]')
-    .getAttribute('content');
+  const paperTitle = requireMeta(xml, 'citation_title', 'ACL Anthology title');
 
   const abst = 'none';
-  const date = xml
-    .querySelector('meta[name="citation_publication_date"]')
-    .getAttribute('content');
+  const date = getMeta(xml, 'citation_publication_date');
   // -> ISO 8601 date string
-  const published = new Date(date).toISOString().split('T')[0];
-  const publisher = xml
-    .querySelectorAll('.acl-paper-details dd')[6]
-    .textContent.replaceAll('\n', '');
-  const comment = xml
-    .querySelector('meta[name="citation_pdf_url"]')
-    .getAttribute('content');
+  const published = date ? new Date(date).toISOString().split('T')[0] : '';
+  const publisher =
+    xml
+      .querySelectorAll('.acl-paper-details dd')[6]
+      ?.textContent?.replaceAll('\n', '') || 'ACL Anthology';
+  const comment = getMeta(xml, 'citation_pdf_url') || 'none';
   return {
     id: id,
     title: paperTitle,

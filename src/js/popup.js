@@ -16,6 +16,9 @@ const TEST_URL = 'https://www.arxiv.org/abs/2508.20324';
 
 class UI {
   constructor() {
+    this.paperReady = false;
+    this.databasesReady = false;
+    this.tokenReady = false;
     this.setupProgressBar();
     this.setupSaveButton();
     this.client = new NotionClient();
@@ -37,30 +40,47 @@ class UI {
 
   async connectionTest() {
     chrome.storage.local.get('botId', async (d) => {
-      if (!this.client.token) {
-        const botId = d.botId;
-        const data = await this.client.requestToken(botId);
-        if (data.name == 'UnauthorizedError') {
-          this.renderMessage('danger', 'You are not logged in notion.so.');
-        } else {
-          this.client.token = data.token;
+      try {
+        if (!this.client.token) {
+          const botId = d.botId;
+          if (!botId) {
+            this.renderMessage(
+              'danger',
+              'Set your Notion integration ID first.'
+            );
+            return;
+          }
+          const data = await this.client.requestToken(botId);
+          if (data.name == 'UnauthorizedError') {
+            this.renderMessage('danger', 'You are not logged in notion.so.');
+            return;
+          } else {
+            this.client.token = data.token;
+            this.tokenReady = true;
+          }
         }
+        const databases = await this.client.retrieveDatabase();
+        this.databasesReady = databases.length > 0;
+        if (!this.databasesReady) {
+          this.renderMessage('danger', 'No connected Notion databases found.');
+        }
+        this.updateSaveState();
+      } catch (err) {
+        this.renderMessage('danger', err.message);
       }
-      this.client.retrieveDatabase();
     });
   }
 
   setupSaveButton() {
-    document.getElementById('js-save').addEventListener('click', async () => {
+    this.saveButton = document.getElementById('js-save');
+    this.updateSaveState();
+    this.saveButton.addEventListener('click', async () => {
+      if (this.saveButton.disabled) return;
       this.showProgressBar();
       try {
         const data = await this.client.createPage(this.data);
-        if (data.status && data.status == 400) {
-          this.renderMessage('danger', `[${data.code}] ${data.message}`);
-          return;
-        } else {
-          this.renderMessage('success', 'Saved to Notion.');
-        }
+        this.renderMessage('success', 'Saved to Notion.');
+        return data;
       } catch (err) {
         this.renderMessage('danger', err.message);
       }
@@ -76,6 +96,15 @@ class UI {
 
   setupProgressBar() {
     this.progressBar = document.getElementById('js-progressbar');
+  }
+
+  updateSaveState() {
+    if (!this.saveButton) return;
+    this.saveButton.disabled = !(
+      this.paperReady &&
+      this.databasesReady &&
+      this.tokenReady
+    );
   }
 
   showProgressBar() {
@@ -109,6 +138,8 @@ class UI {
     try {
       const data = await urlParser.parse(url);
       this.setFormContents(data.title, data.abst, data.comment, data.authors);
+      this.paperReady = true;
+      this.updateSaveState();
       return data;
     } catch (err) {
       this.renderMessage('danger', err.message);
