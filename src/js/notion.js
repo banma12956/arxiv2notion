@@ -98,27 +98,10 @@ export default class Notion {
     return data;
   }
 
-  async requestToken(botId) {
-    const url = 'https://www.notion.so/api/v3/getBotToken';
-    const body = { botId: botId };
-    const headers = {
-      Accept: 'application/json, */*',
-      'Content-type': 'application/json',
-    };
-    const res = await fetch(url, {
-      method: 'POST',
-      mode: 'cors',
-      headers: headers,
-      credentials: 'include',
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(
-        data?.message || 'Failed to request Notion integration token.'
-      );
-    }
-    return data;
+  async validateToken() {
+    if (!this.token)
+      throw new Error('Set your Notion integration token first.');
+    return this.request('users/me', { method: 'GET' });
   }
 
   async retrievePage(pageId) {

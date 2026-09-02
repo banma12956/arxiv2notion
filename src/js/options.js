@@ -11,7 +11,7 @@ UIKit.use(Icons);
 
 class TokenManager {
   constructor() {
-    this.storageKey = 'botId';
+    this.storageKey = 'notionToken';
     this.setupInput();
     this.setupSaveButton();
     this.client = new NotionClient();
@@ -28,7 +28,7 @@ class TokenManager {
   setupSaveButton() {
     this.saveButton = document.getElementById('js-save-btn');
     this.saveButton.addEventListener('click', () => {
-      this.saveIntegrationId();
+      this.saveIntegrationToken();
     });
     this.visibleButton = document.getElementById('js-visible-btn');
     this.visibleButton.addEventListener('click', () => {
@@ -40,37 +40,32 @@ class TokenManager {
     if (!chrome.storage) return;
     chrome.storage.local.get(this.storageKey, (d) => {
       if (!d) return;
-      this.input.value = d.botId;
+      this.input.value = d[this.storageKey] || '';
     });
   }
-  async saveIntegrationId() {
-    const botId = this.input.value;
-    if (!botId.trim().length || botId.length != 36) {
-      console.log('invalid!');
-      this.renderMessage('danger', 'Invalid integration ID (36 char).');
+  async saveIntegrationToken() {
+    const token = this.input.value.trim();
+    if (!token) {
+      this.renderMessage('danger', 'Enter a Notion integration token.');
       return;
     }
-    console.log(botId);
     await chrome.storage.local.set({
-      botId: botId,
+      [this.storageKey]: token,
     });
-    chrome.storage.local.get(this.storageKey, (d) => {
-      console.log('chrome storage', d);
-      this.renderMessage('success', 'integration ID is successfully saved.');
-      this.connectionTest();
-    });
+    // Remove credentials saved by versions that used Notion's unsupported
+    // getBotToken endpoint.
+    await chrome.storage.local.remove('botId');
+    await this.connectionTest();
   }
   async connectionTest() {
-    chrome.storage.local.get(this.storageKey, (d) => {
-      const botId = d.botId;
-      const data = this.client.requestToken(botId);
-      console.log(data);
-      if (data.name == 'UnauthorizedError') {
-        this.renderMessage('danger', 'You are not logged in notion.so.');
-      } else {
-        this.renderMessage('success', 'Successfully connected with notion.so.');
-      }
-    });
+    const d = await chrome.storage.local.get(this.storageKey);
+    this.client.token = d[this.storageKey];
+    try {
+      await this.client.validateToken();
+      this.renderMessage('success', 'Successfully connected to Notion.', true);
+    } catch (err) {
+      this.renderMessage('danger', err.message, true);
+    }
   }
   renderMessage(type, message, overwrite = false) {
     // type: warning, danger, success, primary

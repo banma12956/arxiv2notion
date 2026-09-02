@@ -39,26 +39,19 @@ class UI {
   }
 
   async connectionTest() {
-    chrome.storage.local.get('botId', async (d) => {
+    chrome.storage.local.get('notionToken', async (d) => {
       try {
-        if (!this.client.token) {
-          const botId = d.botId;
-          if (!botId) {
-            this.renderMessage(
-              'danger',
-              'Set your Notion integration ID first.'
-            );
-            return;
-          }
-          const data = await this.client.requestToken(botId);
-          if (data.name == 'UnauthorizedError') {
-            this.renderMessage('danger', 'You are not logged in notion.so.');
-            return;
-          } else {
-            this.client.token = data.token;
-            this.tokenReady = true;
-          }
+        const token = d.notionToken;
+        if (!token) {
+          this.renderMessage(
+            'danger',
+            'Set your Notion integration token first.'
+          );
+          return;
         }
+        this.client.token = token;
+        await this.client.validateToken();
+        this.tokenReady = true;
         const databases = await this.client.retrieveDatabase();
         this.databasesReady = databases.length > 0;
         if (!this.databasesReady) {

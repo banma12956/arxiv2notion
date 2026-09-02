@@ -20,7 +20,6 @@
   "host_permissions": [
     "*://api.notion.com/*",
     "*://export.arxiv.org/*",
-    "*://www.notion.so/*",
     "*://openreview.net/*",
     "*://aclanthology.org/*",
     "*://arxiv.org/*",

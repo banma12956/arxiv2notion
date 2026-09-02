@@ -46,12 +46,12 @@ Easy-to-use arXiv clipper for [Notion](https://www.notion.so) based on [Notion A
 ### 2. Configure the extension
 
 - right-click on the extension icon > `Options`
-  - copy **integration id (not the secret token!)** (see figures below) from `https://www.notion.so/my-integrations/internal/${integration-id}`
-  - paste the `integration id` and click on `+` button.
-  - if your entered id is valid, you can see the following callback messages.
+  - open your integration and copy its **Internal Integration Secret**.
+  - paste the integration token into the extension Options page and click `+`.
+  - if the token is valid, the extension reports a successful connection.
 
 > [!NOTE]
-> To enhance security, arxiv2notion retrieves the Notion API key (integration secrets) on-demand through integration ID instead of storing it directly in Chrome local storage. **Please ensure you are logged into notion.so while using this extension.**
+> The integration token is stored in this extension's Chrome local storage and is sent only to `api.notion.com`. Treat it like a password. Remove the extension or clear its storage to remove the saved token.
 
 <img src="https://github.com/user-attachments/assets/b9e5b87a-e981-4ab6-b59e-75c7c2c7c667" height="300"><img src="https://github.com/user-attachments/assets/d82a0b37-fdc3-44b4-a89f-31997b36a19e" height="300">
 
