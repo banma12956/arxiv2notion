@@ -19,6 +19,10 @@
   "permissions": ["tabs", "storage"],
   "host_permissions": [
     "*://api.notion.com/*",
+    "*://api.semanticscholar.org/*",
+    "*://api.openalex.org/*",
+    "*://api.crossref.org/*",
+    "*://scholar.google.com/*",
     "*://export.arxiv.org/*",
     "*://openreview.net/*",
     "*://aclanthology.org/*",

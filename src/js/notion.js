@@ -1,6 +1,8 @@
 // MIT License
 // Copyright (c) 2021 denkiwakame <denkivvakame@gmail.com>
 
+import { retrieveCitationCount } from './citations.js';
+
 export function makeRichText(content) {
   if (!content) {
     return { rich_text: [] };
@@ -56,6 +58,10 @@ function validateTargetDatabase(database) {
       actualType || 'missing'
     }`;
   });
+
+  if (properties.Citation && properties.Citation.type !== 'number') {
+    errors.push(`Citation must be number; got ${properties.Citation.type}`);
+  }
 
   if (errors.length) {
     throw new Error(
@@ -179,13 +185,27 @@ export default class Notion {
 
     const database = await this.retrieveDatabaseInfo(databaseId);
     validateTargetDatabase(database);
+    const citation =
+      database.properties?.Citation?.type === 'number'
+        ? await retrieveCitationCount(data)
+        : null;
 
     // XXX check if the entry has already been bookmarked
     const duplicateEntries = await this.checkDuplicateEntry(
       data.id,
       databaseId
     );
-    if (duplicateEntries.length != 0) return duplicateEntries[0];
+    if (duplicateEntries.length != 0) {
+      if (!citation) return duplicateEntries[0];
+      return this.request(`pages/${duplicateEntries[0].id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          properties: {
+            Citation: { type: 'number', number: citation.count },
+          },
+        }),
+      });
+    }
 
     const title = data.title;
     const paperUrl = data.url;
@@ -194,7 +214,6 @@ export default class Notion {
     const published = data.published;
     const publisher = data.publisher;
     const comment = data.comment;
-
     try {
       const parent = {
         type: 'database_id',
@@ -228,6 +247,12 @@ export default class Notion {
           id: 'comment',
           type: 'url',
           url: isUrl(comment) ? comment : null,
+        };
+      }
+      if (database.properties?.Citation?.type === 'number' && citation) {
+        properties.Citation = {
+          type: 'number',
+          number: citation.count,
         };
       }
 

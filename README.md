@@ -87,6 +87,18 @@ Easy-to-use arXiv clipper for [Notion](https://www.notion.so) based on [Notion A
 | Published | Date   |
 | Publisher | Select |
 
+To save the paper's current citation count, add this optional property:
+
+| property  | type   |
+| --------- | ------ |
+| Citation | Number |
+
+Citation counts are resolved at save time using Google Scholar, Semantic
+Scholar, OpenAlex, and Crossref. The highest count from exact title or identifier
+matches is saved. Google Scholar does not offer a public citation API, so that
+lookup is best-effort; if every provider fails, the paper is still saved and the
+citation field is left empty.
+
 > [!NOTE]
 > **migration from Multi-Select Authors to Text Authors**
 > Notion displays this property type as `Text`; the Notion API type is `rich_text`.
